@@ -343,17 +343,23 @@
     /* =====================================================================
        DATA
        ===================================================================== */
-    function send(trials) {
-      const payload = { participantId, trials };
-      if (CONFIG.DEBUG) console.log('data', payload);
-      if (!CONFIG.ENDPOINT) return;
-      fetch(CONFIG.ENDPOINT, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
-      }).catch(() => {});
-    }
+let saveData = true;   // becomes false in test mode
+
+function send(trials) {
+  if (!saveData) {
+    if (CONFIG.DEBUG) console.log('test mode, not saved', trials);
+    return;
+  }
+  const payload = { participantId, trials };
+  if (CONFIG.DEBUG) console.log('data', payload);
+  if (!CONFIG.ENDPOINT) return;
+  fetch(CONFIG.ENDPOINT, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  }).catch(() => {});
+}
 
     /* =====================================================================
        SCREENS
@@ -502,12 +508,12 @@
         '</div>' +
         '<button class="next" data-value="go" aria-label="Continue">' + ARROW + '</button>');
       await waitForButton();
+      const screenTime = document.getElementById('screen').value;
+      const age = document.getElementById('age').value;
+      const gender = document.getElementById('gender').value;
+      saveData = Boolean(screenTime || age || gender);   // all blank = test mode
       send([{ itemId: 'demographics', condition: 'info', confidence: '', rtMs: '',
-              answer: JSON.stringify({
-                screenTime: document.getElementById('screen').value,
-                age: document.getElementById('age').value,
-                gender: document.getElementById('gender').value
-              }) }]);
+              answer: JSON.stringify({ screenTime, age, gender }) }]);
 
       // Items
       for (let i = 0; i < ITEMS.length; i++) {
