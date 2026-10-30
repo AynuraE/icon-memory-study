@@ -68,8 +68,6 @@
     .statement { font-size: 1.3rem; font-weight: 600; }
 
     /* images */
-    .stage img { max-width: 100%; max-height: 270px; display: block; }
-    .qimg { max-height: 150px; max-width: 70%; display: block; }
     .placeholder {
       border: 2px dashed var(--ink);
       padding: 28px 22px;
@@ -77,6 +75,27 @@
       border-radius: 10px;
       word-break: break-all;
     }
+
+    /* three pictures on one screen */
+    .pics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      width: 100%;
+    }
+    .pic {
+      font: inherit;
+      background: transparent;
+      border: 2px solid transparent;
+      border-radius: 16px;
+      padding: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pic:hover { border-color: var(--ink); }
+    .pic img { width: 100%; max-height: 300px; object-fit: contain; display: block; }
 
     /* buttons */
     .row { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
@@ -93,39 +112,31 @@
     }
     .btn:hover { background: var(--ink); color: var(--lime); }
     .btn:focus-visible,
-    .pair:focus-visible,
+    .pic:focus-visible,
     .next:focus-visible,
     .conf button:focus-visible {
       outline: 3px solid var(--ink);
       outline-offset: 3px;
     }
 
-    .pair {
-      font: inherit;
-      background: transparent;
-      border: 2px solid transparent;
-      border-radius: 16px;
-      padding: 14px;
-      cursor: pointer;
-    }
-    .pair:hover { border-color: var(--ink); }
-    .pair img { max-height: 130px; max-width: 220px; display: block; }
-
-    .conf { display: flex; gap: 36px; justify-content: center; }
+    /* confidence 1-5 */
+    .conf { display: flex; gap: 22px; justify-content: center; }
     .conf button {
       font: inherit;
       background: transparent;
       border: 2px solid transparent;
       border-radius: 14px;
-      padding: 8px 20px;
+      padding: 6px 18px;
       cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
     }
     .conf button:hover { border-color: var(--ink); }
-    .conf strong { font-size: 2.2rem; font-weight: 800; line-height: 1.1; }
-    .conf span { font-size: 0.85rem; }
+    .conf strong { font-size: 2.6rem; font-weight: 800; line-height: 1.1; }
+    .conf-labels {
+      display: flex;
+      justify-content: space-between;
+      width: min(420px, 100%);
+      font-size: 0.95rem;
+    }
 
     .next {
       background: transparent;
@@ -149,7 +160,7 @@
     }
     textarea.answer { width: min(480px, 100%); min-height: 90px; resize: vertical; }
 
-    /* countdown bar */
+    /* countdown bar (only used if TRIAL_MS is set) */
     .timer {
       width: min(420px, 90%);
       height: 6px;
@@ -168,10 +179,12 @@
     }
     @keyframes shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 
-    @media (max-width: 520px) {
+    @media (max-width: 620px) {
       .card { padding: 24px 16px; min-height: 340px; }
-      .conf { gap: 10px; }
-      .pair img { max-width: 130px; }
+      .pics { grid-template-columns: 1fr; gap: 8px; }
+      .pic img { max-height: 190px; }
+      .conf { gap: 6px; }
+      .conf button { padding: 6px 12px; }
     }
   </style>
 </head>
@@ -189,86 +202,45 @@
        SETTINGS
        ===================================================================== */
     const CONFIG = {
-      ENDPOINT: 'https://script.google.com/macros/s/AKfycbz7spV9mZ3m3HVzLVaj8yLZtk0BpFqkvqPmpCJKyneUkvtApzY-M1y_Hje0TnMGfqkr/exec',          // paste your Google Apps Script web app URL here (see the data-collection step)
-      IMAGE_MS: 2000,        // how long each image stays on screen
-      QUESTION_MS: 4000,     // time limit for true/false and choice questions
-      DEBUG: false            // logs each response in the browser console; set to false when you launch
+      ENDPOINT: 'https://script.google.com/macros/s/AKfycbz7spV9mZ3m3HVzLVaj8yLZtk0BpFqkvqPmpCJKyneUkvtApzY-M1y_Hje0TnMGfqkr/exec',
+      TRIAL_MS: 0,           // time limit per picture question in milliseconds; 0 = no time limit (e.g. 10000 = 10 seconds)
+      IMAGE_EXT: 'png',      // file type of your images (png, jpg, ...)
+      DEBUG: false           // logs each response in the browser console; keep false when you launch
     };
 
     /* =====================================================================
-       ITEMS (fixed order, exactly as in your design)
-       images:     shown one after another for IMAGE_MS each, BEFORE the question
-       prime:      optional true/false statement shown after the images
-       kind:       'tf' (True/False) | 'lr' (Left/Right) | 'pair' (pick one of two pictures) | 'text' (typed)
-       condition:  a label saved with your data so you can group items later
-       Option ids for 'pair' items describe what the picture looks like. They are
-       saved with the data, so no answer key is stored in this file.
+       THE THREE VERSIONS OF EVERY CHARACTER
+       label = what gets saved in your data
+       file  = the ending of the image file name, e.g. images/george_true.png
+       ===================================================================== */
+    const VERSIONS = [
+      { label: 'original',    file: 'true' },
+      { label: 'schema',      file: 'schema' },
+      { label: 'superficial', file: 'superficial' }
+    ];
+
+    /* =====================================================================
+       ITEMS (fixed order). Each one needs three files in the images folder:
+       images/<id>_true.png, images/<id>_schema.png, images/<id>_superficial.png
        ===================================================================== */
     const ITEMS = [
-      { id: 'apple', condition: 'lure', images: ['images/apple.png'], kind: 'tf',
-        question: 'Is the icon you just saw correct for Apple Inc.?' },
-
-      { id: 'george_tail', condition: 'lure', images: ['images/george.png'],
-        prime: { id: 'monkeys_tails', text: 'All monkeys have tails' },
-        kind: 'tf', question: 'Does Curious George have a tail in the original?' },
-
-      { id: 'pooh_tail', condition: 'lure', images: ['images/bear.png', 'images/pooh.png'], kind: 'tf',
-        question: 'Does Winnie the Pooh have a tail in the original?' },
-
-      { id: 'subtitles_icon', condition: 'choice', kind: 'pair',
-        question: 'Which one holds true for the \u2018subtitles\u2019 icon?',
-        options: [
-          { id: 'cc_standard', img: 'images/cc_standard.png' },
-          { id: 'cc_mirrored', img: 'images/cc_mirrored.png' }
-        ] },
-
-      { id: 'image_icon', condition: 'choice', kind: 'pair',
-        question: 'Which one holds true for the \u2018image\u2019 icon?',
-        options: [
-          { id: 'sun_top_right', img: 'images/image_sun_right.png' },
-          { id: 'sun_top_left',  img: 'images/image_sun_left.png' }
-        ] },
-
-      { id: 'star_symbol', condition: 'typed', kind: 'text', questionImage: 'images/star.png',
-        question: 'What does this symbol mean for you on your device?' },
-
-      { id: 'amazon', condition: 'choice', kind: 'pair',
-        question: 'Which icon is correct for Amazon Inc.?',
-        options: [
-          { id: 'amazon_arrow_right', img: 'images/amazon_arrow_right.png' },
-          { id: 'amazon_arrow_left',  img: 'images/amazon_arrow_left.png' }
-        ] },
-
-      { id: 'youtube', condition: 'choice', kind: 'pair',
-        question: 'Which icon is correct for YouTube Inc.?',
-        options: [
-          { id: 'youtube_play_right', img: 'images/youtube_play_right.png' },
-          { id: 'youtube_play_left',  img: 'images/youtube_play_left.png' }
-        ] },
-
-      { id: 'windows_icon', condition: 'typed', kind: 'text', questionImage: 'images/windows.png',
-        question: 'Do you remember this icon?' },
-
-      { id: 'x_icon', condition: 'typed', kind: 'text', questionImage: 'images/x.png',
-        question: 'What\u2019s the role of this icon?' },
-
-      { id: 'hello_kitty_mouth', condition: 'lure', images: ['images/hello_kitty.png'],
-        prime: { id: 'cats_mouth', text: 'All cats have mouth' },
-        kind: 'tf', question: 'Does \u2018Hello Kitty\u2019 have a mouth in the original?' },
-
-      { id: 'lincoln_penny', condition: 'lure', images: ['images/penny.png'], kind: 'lr',
-        question: 'Which way does Lincoln face in the original?' },
-
-      { id: 'statue_flame', condition: 'lure', images: ['images/statue.png'], kind: 'lr',
-        question: 'Which hand holds the flame in the Statue of Liberty?' },
-
-      { id: 'mickey_suspenders', condition: 'lure', images: ['images/goofy.png', 'images/mickey.png'], kind: 'tf',
-        question: 'Does Mickey Mouse wear suspenders in the original?' },
-
-      { id: 'lumiere_hands', condition: 'lure', images: ['images/chandelier.png'], kind: 'tf',
-        questionImage: 'images/lumiere.png',
-        question: '\u2018Lumiere\u2019 has three hands in the Beauty and the Beast original' }
+      { id: 'george', question: 'Which one is the original George in Curious George?' },
+      { id: 'kitty',  question: 'Which one is the original Kitty in Hello Kitty?' },
+      { id: 'pooh',   question: 'Which one is the original Pooh in the Winnie the Pooh?' },
+      { id: 'mickey', question: 'Which one is the original Mickey in Mickey Mouse?' },
+      { id: 'donald', question: 'Which one is the original Donald Duck in Mickey Mouse?' },
+      { id: 'judy',   question: 'Which one is the original Judy Hopps in Zootopia?' },
+      { id: 'nick',   question: 'Which one is the original Nick Wilde in Zootopia?' },
+      { id: 'goofy',  question: 'Which one is the original Goofy in Mickey Mouse?' },
+      { id: 'simba',  question: 'Which one is the original Simba in Lion King?' },
+      { id: 'timon',  question: 'Which one is the original Timon in the Lion King?' }
     ];
+
+    // Ungraded general-knowledge statements, shown after all the pictures (no time limit).
+    // To remove this part, make the list empty: const KNOWLEDGE_CHECKS = [];
+    const KNOWLEDGE_CHECKS = [];
+
+    const imgPath = (item, v) => 'images/' + item.id + '_' + v.file + '.' + CONFIG.IMAGE_EXT;
 
     /* =====================================================================
        HELPERS
@@ -343,23 +315,23 @@
     /* =====================================================================
        DATA
        ===================================================================== */
-let saveData = true;   // becomes false in test mode
+    let saveData = true;   // becomes false in test mode
 
-function send(trials) {
-  if (!saveData) {
-    if (CONFIG.DEBUG) console.log('test mode, not saved', trials);
-    return;
-  }
-  const payload = { participantId, trials };
-  if (CONFIG.DEBUG) console.log('data', payload);
-  if (!CONFIG.ENDPOINT) return;
-  fetch(CONFIG.ENDPOINT, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload)
-  }).catch(() => {});
-}
+    function send(trials) {
+      if (!saveData) {
+        if (CONFIG.DEBUG) console.log('test mode, not saved', trials);
+        return;
+      }
+      const payload = { participantId, trials };
+      if (CONFIG.DEBUG) console.log('data', payload);
+      if (!CONFIG.ENDPOINT) return;
+      fetch(CONFIG.ENDPOINT, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      }).catch(() => {});
+    }
 
     /* =====================================================================
        SCREENS
@@ -372,53 +344,43 @@ function send(trials) {
       await waitForButton();
     }
 
-    async function showImage(src) {
-      render('<div class="stage">' + img(src) + '</div>' + timerBar(CONFIG.IMAGE_MS));
-      await sleep(CONFIG.IMAGE_MS);
-    }
-
-    function questionMarkup(question, image) {
-      return (image ? img(image, 'qimg') : '') + '<p class="question">' + esc(question) + '</p>';
-    }
-
-    // True/False or Left/Right. Returns { value, rt } (value is null on timeout).
-    async function askButtons(text, labels, image, isStatement) {
-      const buttons = labels.map(l => '<button class="btn" data-value="' + l + '">' + l + '</button>').join('');
-      const head = isStatement ? '<p class="statement">' + esc(text) + '</p>' : questionMarkup(text, image);
-      render(head + '<div class="row">' + buttons + '</div>' + timerBar(CONFIG.QUESTION_MS));
+    // Three pictures on one screen, in a random left-to-right order.
+    async function askTrial(item) {
+      const order = shuffle(VERSIONS);
+      const pics = order.map((v, i) =>
+        '<button class="pic" data-value="' + v.label + '" aria-label="Picture ' + (i + 1) + ' of 3">' +
+          img(imgPath(item, v)) + '</button>').join('');
+      render('<p class="question">' + esc(item.question) + '</p>' +
+             '<div class="pics">' + pics + '</div>' +
+             (CONFIG.TRIAL_MS ? timerBar(CONFIG.TRIAL_MS) : ''));
       const t0 = performance.now();
-      const value = await waitForButton(CONFIG.QUESTION_MS);
-      return { value, rt: Math.round(performance.now() - t0) };
+      const value = await waitForButton(CONFIG.TRIAL_MS);
+      return {
+        value,
+        rt: Math.round(performance.now() - t0),
+        order: order.map(v => v.label).join('-')   // left to right, saved in the "condition" column
+      };
     }
 
-    // Pick one of two pictures (position is randomized).
-    async function askPair(item) {
-      const opts = shuffle(item.options).map(o =>
-        '<button class="pair" data-value="' + o.id + '">' + img(o.img) + '</button>').join('');
-      render('<p class="question">' + esc(item.question) + '</p><div class="row">' + opts + '</div>' + timerBar(CONFIG.QUESTION_MS));
-      const t0 = performance.now();
-      const value = await waitForButton(CONFIG.QUESTION_MS);
-      return { value, rt: Math.round(performance.now() - t0) };
-    }
-
-    // Typed answer, no time limit.
-    async function askText(item) {
-      render(questionMarkup(item.question, item.questionImage) +
-        '<textarea class="answer" id="typed" aria-label="Your answer" placeholder="Type your response here"></textarea>' +
-        '<button class="btn" data-value="go">Continue</button>');
-      const t0 = performance.now();
-      await waitForButton();
-      return { value: document.getElementById('typed').value.trim(), rt: Math.round(performance.now() - t0) };
-    }
-
+    // 1 to 5, labeled at the two ends.
     async function askConfidence() {
-      render('<p class="question">Rate your confidence</p>' +
+      render('<p class="question">Rate Your Confidence</p>' +
         '<div class="conf">' +
-          '<button data-value="1"><strong>1</strong><span>guessing</span></button>' +
-          '<button data-value="2"><strong>2</strong><span>fairly sure</span></button>' +
-          '<button data-value="3"><strong>3</strong><span>100% sure</span></button>' +
-        '</div>');
+          [1, 2, 3, 4, 5].map(n => '<button data-value="' + n + '"><strong>' + n + '</strong></button>').join('') +
+        '</div>' +
+        '<div class="conf-labels"><span>Least Confident</span><span>Most Confident</span></div>');
       return Number(await waitForButton());
+    }
+
+    async function askStatement(text) {
+      render('<p class="statement">' + esc(text) + '</p>' +
+        '<div class="row">' +
+          '<button class="btn" data-value="True">True</button>' +
+          '<button class="btn" data-value="False">False</button>' +
+        '</div>');
+      const t0 = performance.now();
+      const value = await waitForButton();
+      return { value, rt: Math.round(performance.now() - t0) };
     }
 
     async function timeUp() {
@@ -430,46 +392,23 @@ function send(trials) {
        ONE ITEM
        ===================================================================== */
     async function runItem(item) {
-      // 1. lure image(s)
-      for (const src of (item.images || [])) await showImage(src);
-
-      // 2. optional true/false statement (saved, no confidence rating)
-      if (item.prime) {
-        const p = await askButtons(item.prime.text, ['True', 'False'], null, true);
-        send([{ itemId: 'prime_' + item.prime.id, condition: 'prime',
-                answer: p.value === null ? 'timeout' : p.value, confidence: '', rtMs: p.rt }]);
-        if (p.value === null) await timeUp();
-      }
-
-      // 3. the question
-      let res;
-      if (item.kind === 'tf')        res = await askButtons(item.question, ['True', 'False'], item.questionImage);
-      else if (item.kind === 'lr')   res = await askButtons(item.question, ['Left', 'Right'], item.questionImage);
-      else if (item.kind === 'pair') res = await askPair(item);
-      else                           res = await askText(item);
+      const res = await askTrial(item);
 
       if (res.value === null) {
         await timeUp();
-        send([{ itemId: item.id, condition: item.condition, answer: 'timeout', confidence: '', rtMs: res.rt }]);
+        send([{ itemId: item.id, condition: res.order, answer: 'timeout', confidence: '', rtMs: res.rt }]);
         return;
       }
 
-      // 4. confidence
       const confidence = await askConfidence();
-      send([{ itemId: item.id, condition: item.condition, answer: res.value, confidence, rtMs: res.rt }]);
+      send([{ itemId: item.id, condition: res.order, answer: res.value, confidence, rtMs: res.rt }]);
     }
 
     /* =====================================================================
        THE STUDY
        ===================================================================== */
     function preload() {
-      const srcs = new Set();
-      ITEMS.forEach(it => {
-        (it.images || []).forEach(s => srcs.add(s));
-        if (it.questionImage) srcs.add(it.questionImage);
-        (it.options || []).forEach(o => srcs.add(o.img));
-      });
-      srcs.forEach(s => { const i = new Image(); i.src = s; });
+      ITEMS.forEach(it => VERSIONS.forEach(v => { const i = new Image(); i.src = imgPath(it, v); }));
     }
 
     async function main() {
@@ -489,9 +428,9 @@ function send(trials) {
       // Instructions
       await infoScreen(
         '<p class="question">You\u2019ll see some images and answer questions.<br>Answer about the original version of each item.</p>' +
-        '<p>You will have ' + (CONFIG.IMAGE_MS / 1000) + ' seconds to look at each image and ' +
-        (CONFIG.QUESTION_MS / 1000) + ' seconds to answer each true/false or choice question. ' +
-        'Typed answers are not timed. After each answer, you will rate how confident you are.</p>');
+        '<p>For each character you will see three pictures. Click the one you think is the original. ' +
+        (CONFIG.TRIAL_MS ? 'You will have ' + (CONFIG.TRIAL_MS / 1000) + ' seconds for each one. ' : '') +
+        'After each answer, you will rate how confident you are.</p>');
 
       // Personal questions
       render(
@@ -521,6 +460,15 @@ function send(trials) {
         setProgress(i + 1, ITEMS.length);
       }
 
+      // General-knowledge statements (ungraded)
+      if (KNOWLEDGE_CHECKS.length) {
+        await infoScreen('<p class="question">Two quick general-knowledge questions.</p>');
+        for (const k of KNOWLEDGE_CHECKS) {
+          const r = await askStatement(k.text);
+          send([{ itemId: 'knowledge_' + k.id, condition: 'knowledge', answer: r.value, confidence: '', rtMs: r.rt }]);
+        }
+      }
+
       // Open-ended questions
       render(
         '<div class="form">' +
@@ -537,8 +485,9 @@ function send(trials) {
       // Debrief
       render(
         '<div class="copy"><h1>Thank you!</h1>' +
-        '<p>Some of the images you saw were edited and changed on purpose. We are studying whether a perception of an icon and recency ' +
-        'override the original memory.</p>' +
+        '<p>In each set, one picture was the original and two were edited on purpose. We are studying what kinds of mistakes ' +
+        'people make when they remember familiar characters, and whether those mistakes follow what we know about a whole ' +
+        'category of animals (for example, that monkeys have tails).</p>' +
         '<p>There are no right or wrong answers here. False memories tend to exist because of the way our brains process and store information. ' +
         'You can close this page now.</p></div>');
     }
